@@ -35,14 +35,11 @@ public class ShulkerListener implements Listener {
     public void onInventoryDrag(InventoryDragEvent event) {
         if (event.getWhoClicked() instanceof Player) {
             Player player = (Player) event.getWhoClicked();
-            Bukkit.getServer().getScheduler().scheduleSyncDelayedTask(main, new Runnable() {
-                @Override
-                public void run() {
-                    if (!saveShulker(player, event.getView().getTitle())) {
-                        event.setCancelled(true);
-                    }
+            player.getScheduler().run(main, (task) -> {
+                if (!saveShulker(player, event.getView().getTitle())) {
+                    event.setCancelled(true);
                 }
-            }, 1);
+            }, null);
         }
     }
 
@@ -151,14 +148,11 @@ public class ShulkerListener implements Listener {
                 event.setCancelled(isCancelled);
             }
 
-            Bukkit.getServer().getScheduler().scheduleSyncDelayedTask(main, new Runnable() {
-                @Override
-                public void run() {
-                    if (!saveShulker(player, event.getView().getTitle())) {
-                        event.setCancelled(true);
-                    }
+            player.getScheduler().run(main, (task) -> {
+                if (!saveShulker(player, event.getView().getTitle())) {
+                    event.setCancelled(true);
                 }
-            }, 1);
+            }, null);
         }
     }
 
@@ -193,13 +187,10 @@ public class ShulkerListener implements Listener {
     private void openPreviousInventory(Player player) {
         InventoryType type = main.opencontainer.get(player).getType();
         if (type != InventoryType.CRAFTING && type != InventoryType.SHULKER_BOX) {
-            Bukkit.getServer().getScheduler().scheduleSyncDelayedTask(main, new Runnable() {
-                @Override
-                public void run() {
-                    player.openInventory(main.opencontainer.get(player));
-                    main.opencontainer.remove(player);
-                }
-            }, 1);
+            player.getScheduler().runDelayed(main, (task) -> {
+                player.openInventory(main.opencontainer.get(player));
+                main.opencontainer.remove(player);
+            }, null, 1);
         }
     }
 
@@ -284,7 +275,7 @@ public class ShulkerListener implements Listener {
                 BlockStateMeta meta = (BlockStateMeta) item.getItemMeta();
                 ShulkerBox shulker = (ShulkerBox) meta.getBlockState();
                 p.getOpenInventory().getTopInventory().setContents(shulker.getInventory().getContents());
-                p.updateInventory();
+                // updateInventory() is deprecated and no longer needed in modern versions
             }
         }
     }
@@ -316,15 +307,14 @@ public class ShulkerListener implements Listener {
 
                             main.opencontainer.put(player, player.getOpenInventory().getTopInventory());
 
-                            Bukkit.getServer().getScheduler().scheduleSyncDelayedTask(main, new Runnable() {
-                                @Override
-                                public void run() {
-                                    player.openInventory(inv);
-                                    player.playSound(player.getLocation(), Sound.BLOCK_SHULKER_BOX_OPEN, main.volume, 1);
-                                    ShulkerPacks.openshulkers.put(player, item);
-                                    main.openinventories.put(player, player.getOpenInventory().getTopInventory());
-                                }
-                            }, 1);
+                            player.getScheduler().runDelayed(main, (task) -> {
+                                player.openInventory(inv);
+                                player.playSound(player.getLocation(), Sound.BLOCK_SHULKER_BOX_OPEN, main.volume, 1);
+                                ShulkerPacks.openshulkers.put(player, item);
+                                main.openinventories.put(player, player.getOpenInventory().getTopInventory());
+                                // Start validation task for this player
+                                startValidationTask(player);
+                            }, null, 1);
                             return true;
                         }
                     }
@@ -335,24 +325,37 @@ public class ShulkerListener implements Listener {
     }
 
     void checkIfValid() {
-        Bukkit.getScheduler().scheduleSyncRepeatingTask(main, new Runnable() {
-            @Override
-            public void run() {
-                for (Player p : ShulkerPacks.openshulkers.keySet()) {
-                    if (ShulkerPacks.openshulkers.get(p).getType() == Material.AIR) {
-                        p.closeInventory();
-                    }
-                    if (main.opencontainer.containsKey(p)) {
-                        if (main.opencontainer.get(p).getLocation() != null) {
-                            if (main.opencontainer.get(p).getLocation() != null && main.opencontainer.get(p).getLocation().getWorld() == p.getWorld()) {
-                                if (main.opencontainer.get(p).getLocation().distance(p.getLocation()) > 6) {
-                                    p.closeInventory();
-                                }
-                            }
+        // No longer needed - validation is now done per-player when they open a shulker
+        // See startValidationTask() method
+    }
+
+    void startValidationTask(Player player) {
+        // Start a per-player repeating task for validation
+        player.getScheduler().runAtFixedRate(main, (task) -> {
+            // Check if player still has the shulker open
+            if (!ShulkerPacks.openshulkers.containsKey(player)) {
+                task.cancel();
+                return;
+            }
+
+            // Check if the shulker item still exists
+            if (ShulkerPacks.openshulkers.get(player).getType() == Material.AIR) {
+                player.closeInventory();
+                task.cancel();
+                return;
+            }
+
+            // Check distance from container if applicable
+            if (main.opencontainer.containsKey(player)) {
+                if (main.opencontainer.get(player).getLocation() != null) {
+                    if (main.opencontainer.get(player).getLocation().getWorld() == player.getWorld()) {
+                        if (main.opencontainer.get(player).getLocation().distance(player.getLocation()) > 6) {
+                            player.closeInventory();
+                            task.cancel();
                         }
                     }
                 }
             }
-        }, 1L, 1L);
+        }, null, 1L, 1L);
     }
 }

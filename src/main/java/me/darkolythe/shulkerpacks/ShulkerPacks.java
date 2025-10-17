@@ -8,6 +8,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 public final class ShulkerPacks extends JavaPlugin {
@@ -18,11 +19,11 @@ public final class ShulkerPacks extends JavaPlugin {
 
     String prefix = ChatColor.WHITE.toString() + ChatColor.BOLD.toString() + "[" + ChatColor.BLUE.toString() + "ShulkerPacks" + ChatColor.WHITE.toString() + ChatColor.BOLD.toString() + "] ";
 
-    static Map<Player, ItemStack> openshulkers = new HashMap<>();
-    Map<Player, Boolean> fromhand = new HashMap<>();
-    Map<Player, Inventory> openinventories = new HashMap<>();
-    Map<Player, Inventory> opencontainer = new HashMap<>();
-    private Map<Player, Long> pvp_timer = new HashMap<>();
+    static Map<Player, ItemStack> openshulkers = new ConcurrentHashMap<>();
+    Map<Player, Boolean> fromhand = new ConcurrentHashMap<>();
+    Map<Player, Inventory> openinventories = new ConcurrentHashMap<>();
+    Map<Player, Inventory> opencontainer = new ConcurrentHashMap<>();
+    private Map<Player, Long> pvp_timer = new ConcurrentHashMap<>();
     boolean canopeninchests = true;
     boolean openpreviousinv = false;
     List<String> blacklist = new ArrayList<>();
@@ -46,8 +47,9 @@ public final class ShulkerPacks extends JavaPlugin {
 
         ConfigHandler.loadConfig(this);
 
+        // bStatsID for ShulkerPacks - get from https://bstats.org/
         @SuppressWarnings("unused")
-		Metrics metrics = new Metrics(this);
+        Metrics metrics = new Metrics(this, 3243);
 
         shulkerlistener.checkIfValid();
 
@@ -55,13 +57,20 @@ public final class ShulkerPacks extends JavaPlugin {
     }
 
     /*
-    Doesnt do much. Just says a message
+    Closes all open shulker inventories and logs disable message
      */
     @Override
     public void onDisable() {
-        Iterator<Player> it = this.openinventories.keySet().iterator();
-        while (it.hasNext()) {
-            it.next().closeInventory();
+        // Close all open shulker inventories synchronously
+        // Cannot schedule tasks during shutdown, so we close inventories directly
+        // This is safe because the server is shutting down anyway
+        List<Player> playersToClose = new ArrayList<>(this.openinventories.keySet());
+        for (Player player : playersToClose) {
+            try {
+                player.closeInventory();
+            } catch (Exception e) {
+                // Ignore errors during shutdown
+            }
         }
         getLogger().log(Level.INFO, (prefix + ChatColor.RED + "ShulkerPacks has been disabled!"));
     }
